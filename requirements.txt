@@ -1,6 +1,7 @@
-streamlit==1.25.0
+streamlit
 langchain==0.0.198
-chromadb
+langchain-community==0.0.28
+faiss-cpu
 sentence-transformers==2.2.2
-torch==2.0.1
-huggingface_hub==0.14.1
+torch
+transformers
