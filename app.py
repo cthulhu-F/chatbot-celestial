@@ -1,18 +1,29 @@
 import streamlit as st
 import os
 import json
-
-from langchain.schema import Document 
+from langchain.schema import Document
 from langchain.vectorstores import Chroma
-from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain.chat_models import ChatOpenAI
 from langchain.chains import ConversationalRetrievalChain
 
-# Configurar API Fireworks desde Streamlit secrets
+# Importar SentenceTransformer directamente
+from sentence_transformers import SentenceTransformer
+import numpy as np
+
+# Wrapper sencillo para integrar SentenceTransformer con LangChain embeddings API
+class SentenceTransformerEmbeddings:
+    def __init__(self, model_name="all-MiniLM-L6-v2"):
+        self.model = SentenceTransformer(model_name)
+    def embed_documents(self, texts):
+        return self.model.encode(texts, convert_to_numpy=True).tolist()
+    def embed_query(self, text):
+        return self.model.encode([text], convert_to_numpy=True).tolist()[0]
+
+# Configurar Fireworks API Key
 os.environ["OPENAI_API_KEY"] = st.secrets["FIREWORKS_API_KEY"]
 os.environ["OPENAI_API_BASE"] = "https://api.fireworks.ai/inference/v1"
 
-# --- Cargar documentos JSONL ---
+# Cargar documentos JSONL
 docs = []
 for filename in os.listdir("docs"):
     if filename.endswith(".jsonl"):
@@ -26,18 +37,24 @@ for filename in os.listdir("docs"):
                 except json.JSONDecodeError:
                     continue
 
-# --- Crear vector store ---
-embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-vectordb = Chroma.from_documents(docs, embeddings, persist_directory="db")
+# Crear embeddings personalizados
+embeddings = SentenceTransformerEmbeddings(model_name="all-MiniLM-L6-v2")
+
+# Extraer textos para crear vectores
+texts = [doc.page_content for doc in docs]
+
+# Vector store Chroma necesita el embedding de query y documents separados,
+# pero aquí usamos la interfaz simple de from_texts (que internamente llama a embed_documents)
+vectordb = Chroma.from_texts(texts, embeddings, persist_directory="db")
 vectordb.persist()
 
-# --- Preparar modelo LLM ---
+# Crear modelo LLM Fireworks
 llm = ChatOpenAI(model="accounts/fireworks/models/mixtral-8x7b-instruct")
 
-# --- Cadena QA con recuperación ---
+# Cadena QA
 qa_chain = ConversationalRetrievalChain.from_llm(llm, vectordb.as_retriever())
 
-# --- Interfaz Streamlit ---
+# Interfaz Streamlit
 st.set_page_config(page_title="Chatbot con JSONL", page_icon="🤖")
 st.title("🤖 Chatbot con tus archivos .jsonl")
 

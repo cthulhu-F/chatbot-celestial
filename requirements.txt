@@ -6,3 +6,5 @@ chromadb
 unstructured
 tiktoken
 sentence-transformers
+torch
+transformers
