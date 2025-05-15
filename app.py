@@ -3,10 +3,9 @@ import json
 from langchain.embeddings import HuggingFaceEmbeddings
 from langchain.vectorstores import FAISS
 from langchain.chains import RetrievalQA
-from langchain.llms import HuggingFaceHub
 from langchain.docstore.document import Document
+from huggingface_hub import InferenceApi
 
-# Configura tu token de Hugging Face
 HUGGINGFACEHUB_API_TOKEN = st.secrets.get("HUGGINGFACEHUB_API_TOKEN", None)
 if not HUGGINGFACEHUB_API_TOKEN:
     st.error("Por favor configura HUGGINGFACEHUB_API_TOKEN en Streamlit secrets.")
@@ -14,7 +13,6 @@ if not HUGGINGFACEHUB_API_TOKEN:
 
 @st.cache_resource(show_spinner=True)
 def load_embeddings():
-    # Modelo para embeddings (puedes cambiar a otro)
     return HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
 @st.cache_resource(show_spinner=True)
@@ -23,12 +21,8 @@ def load_faiss(texts, _embeddings):
     return FAISS.from_documents(docs, _embeddings)
 
 @st.cache_resource(show_spinner=True)
-def load_llm():
-    return HuggingFaceHub(
-        repo_id="google/flan-t5-small",
-        model_kwargs={"temperature":0, "max_length":256},
-        huggingfacehub_api_token=HUGGINGFACEHUB_API_TOKEN,
-    )
+def load_inference_api():
+    return InferenceApi(repo_id="google/flan-t5-small", token=HUGGINGFACEHUB_API_TOKEN)
 
 def main():
     st.title("Chatbot con HuggingFace + FAISS")
@@ -38,7 +32,6 @@ def main():
         st.info("Sube un archivo JSONL para empezar.")
         return
 
-    # Carga textos del JSONL
     texts = []
     for line in uploaded_file:
         data = json.loads(line)
@@ -46,16 +39,26 @@ def main():
 
     embeddings = load_embeddings()
     vectordb = load_faiss(texts, embeddings)
-    llm = load_llm()
+    inference_api = load_inference_api()
 
     retriever = vectordb.as_retriever(search_type="similarity", search_kwargs={"k":3})
-    qa_chain = RetrievalQA.from_chain_type(llm=llm, chain_type="stuff", retriever=retriever)
 
     query = st.text_input("Haz una pregunta:")
     if query:
         with st.spinner("Buscando respuesta..."):
-            result = qa_chain.run(query)
-        st.markdown(f"**Respuesta:** {result}")
+            docs = retriever.get_relevant_documents(query)
+            context = "\n".join([doc.page_content for doc in docs])
+            prompt = f"Contexto:\n{context}\n\nPregunta: {query}\nRespuesta:"
+            
+            # Llamada directa al modelo, raw_response True para parsear JSON
+            response = inference_api(inputs=prompt, raw_response=True)
+            response_json = response.json()
+            
+            # Dependiendo del modelo la respuesta puede estar en diferentes keys:
+            # Normalmente en 'generated_text' o similar
+            answer = response_json.get('generated_text', 'No se obtuvo respuesta')
+
+        st.markdown(f"**Respuesta:** {answer}")
 
 if __name__ == "__main__":
     main()
