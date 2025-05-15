@@ -1,57 +1,63 @@
 import streamlit as st
-import os
 import json
-from typing import List
-
-from langchain.schema import Document
-from langchain.vectorstores import FAISS
 from langchain.embeddings import HuggingFaceEmbeddings
-from langchain.chat_models import HuggingFaceChat
-from langchain.chains import ConversationalRetrievalChain
+from langchain.vectorstores import FAISS
+from langchain.chains import RetrievalQA
+from langchain.llms import HuggingFaceHub
+from langchain.docstore.document import Document
 
-# Token de HuggingFace para API
-HF_API_TOKEN = st.secrets["HUGGINGFACE_API_TOKEN"]
-os.environ["HUGGINGFACEHUB_API_TOKEN"] = HF_API_TOKEN
+# Configura tu token de Hugging Face
+HUGGINGFACEHUB_API_TOKEN = st.secrets.get("HUGGINGFACEHUB_API_TOKEN", None)
+if not HUGGINGFACEHUB_API_TOKEN:
+    st.error("Por favor configura HUGGINGFACEHUB_API_TOKEN en Streamlit secrets.")
+    st.stop()
 
-# Carga los documentos JSONL
-def load_docs(path="docs"):
-    docs = []
-    for filename in os.listdir(path):
-        if filename.endswith(".jsonl"):
-            with open(os.path.join(path, filename), encoding="utf-8") as f:
-                for line in f:
-                    data = json.loads(line)
-                    text = data.get("text", "")
-                    if text:
-                        docs.append(Document(page_content=text))
-    return docs
+@st.cache_resource(show_spinner=True)
+def load_embeddings():
+    # Modelo para embeddings (puedes cambiar a otro)
+    return HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
-docs = load_docs()
+@st.cache_resource(show_spinner=True)
+def load_faiss(texts, embeddings):
+    # Convierte textos en Documentos
+    docs = [Document(page_content=t) for t in texts]
+    # Crea índice FAISS
+    return FAISS.from_documents(docs, embeddings)
 
-# Crea embeddings usando un modelo de sentence-transformers compatible
-embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+@st.cache_resource(show_spinner=True)
+def load_llm():
+    return HuggingFaceHub(
+        repo_id="google/flan-t5-small",
+        model_kwargs={"temperature":0, "max_length":256},
+        huggingfacehub_api_token=HUGGINGFACEHUB_API_TOKEN,
+    )
 
-# Extrae textos
-texts = [doc.page_content for doc in docs]
+def main():
+    st.title("Chatbot con HuggingFace + FAISS")
 
-# Crea vectorstore FAISS
-vectordb = FAISS.from_texts(texts, embeddings)
+    uploaded_file = st.file_uploader("Sube tu archivo JSONL con conversaciones", type=["jsonl"])
+    if not uploaded_file:
+        st.info("Sube un archivo JSONL para empezar.")
+        return
 
-# Define el modelo LLM HuggingFace Chat (usa un modelo instruct)
-llm = HuggingFaceChat(model_name="tiiuae/falcon-7b-instruct", huggingfacehub_api_token=HF_API_TOKEN)
+    # Carga textos del JSONL
+    texts = []
+    for line in uploaded_file:
+        data = json.loads(line)
+        texts.append(data["text"])
 
-# Cadena de consulta conversacional con recuperación
-qa_chain = ConversationalRetrievalChain.from_llm(llm, vectordb.as_retriever())
+    embeddings = load_embeddings()
+    vectordb = load_faiss(texts, embeddings)
+    llm = load_llm()
 
-# Streamlit UI
-st.title("🤖 Chatbot con HuggingFace API + FAISS")
+    retriever = vectordb.as_retriever(search_type="similarity", search_kwargs={"k":3})
+    qa_chain = RetrievalQA.from_chain_type(llm=llm, chain_type="stuff", retriever=retriever)
 
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []
+    query = st.text_input("Haz una pregunta:")
+    if query:
+        with st.spinner("Buscando respuesta..."):
+            result = qa_chain.run(query)
+        st.markdown(f"**Respuesta:** {result}")
 
-query = st.text_input("Haz una pregunta:")
-
-if query:
-    result = qa_chain({"question": query, "chat_history": st.session_state.chat_history})
-    st.session_state.chat_history.append((query, result["answer"]))
-    st.markdown(f"**Respuesta:** {result['answer']}")
+if __name__ == "__main__":
+    main()
