@@ -7,17 +7,18 @@ from langchain.chat_models import ChatOpenAI
 from langchain.chains import ConversationalRetrievalChain
 
 # Importar SentenceTransformer directamente
+from typing import List
 from sentence_transformers import SentenceTransformer
 import numpy as np
 
 # Wrapper sencillo para integrar SentenceTransformer con LangChain embeddings API
 class SentenceTransformerEmbeddings:
-    def __init__(self, model_name="all-MiniLM-L6-v2"):
+    def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
         self.model = SentenceTransformer(model_name)
-    def embed_documents(self, texts):
-        return self.model.encode(texts, convert_to_numpy=True).tolist()
-    def embed_query(self, text):
-        return self.model.encode([text], convert_to_numpy=True).tolist()[0]
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        return self.model.encode(texts, convert_to_numpy=False).tolist()
+    def embed_query(self, text: str) -> List[float]:
+        return self.model.encode([text], convert_to_numpy=False)[0].tolist()
 
 # Configurar Fireworks API Key
 os.environ["OPENAI_API_KEY"] = st.secrets["FIREWORKS_API_KEY"]
@@ -38,7 +39,7 @@ for filename in os.listdir("docs"):
                     continue
 
 # Crear embeddings personalizados
-embeddings = SentenceTransformerEmbeddings(model_name="all-MiniLM-L6-v2")
+embeddings = SentenceTransformerEmbeddings()
 
 # Extraer textos para crear vectores
 texts = [doc.page_content for doc in docs]
