@@ -20,6 +20,29 @@ def load_faiss(texts, _embeddings):
 def load_pipeline():
     return pipeline("text2text-generation", model="mrm8488/spanish-t5-small-sqac-for-qa")
 
+
+def update_faiss_with_feedback(vectordb, embeddings, feedback_file):
+    high_quality_texts = []
+    if os.path.exists(feedback_file):
+        with open(feedback_file, "r", encoding="utf-8") as f:
+            for line in f:
+                try:
+                    feedback_data = json.loads(line.strip())
+                    if feedback_data["rating"] >= 4:  # Solo respuestas con calificación alta
+                        # Combinar consulta y respuesta para mayor contexto
+                        text = f"Consulta: {feedback_data['query']} | Respuesta: {feedback_data['answer']}"
+                        high_quality_texts.append(text)
+                except json.JSONDecodeError:
+                    continue
+        
+        if high_quality_texts:
+            # Crear documentos para FAISS
+            new_docs = [Document(page_content=t) for t in high_quality_texts]
+            # Actualizar el índice FAISS
+            vectordb.add_documents(new_docs)
+            st.success(f"Índice FAISS actualizado con {len(high_quality_texts)} nuevas entradas.")
+    return vectordb
+
 # Función para detectar emociones o temas
 def detectar_emocion(query):
     query = query.lower()
@@ -69,19 +92,12 @@ def main():
             for line in file:
                 try:
                     data = json.loads(line.strip())
-                    if "text" in data:
-                        # Filtrar entradas con nombres propios no deseados
-                        if not re.search(r'\b(?:Axel|Franco)\b', data["text"], re.IGNORECASE):
-                            texts.append(data["text"])
-                        else:
-                            st.warning(f"Línea omitida, contiene nombres no deseados: {line}")
+                    if "text" in data and not re.search(r'\b(?:Axel|Franco)\b', data["text"], re.IGNORECASE):
+                        texts.append(data["text"])
                     else:
-                        st.warning(f"Línea omitida, no contiene campo 'text': {line}")
+                        st.warning(f"Línea omitida: {line}")
                 except json.JSONDecodeError as e:
-                    st.error(f"Error al parsear una línea del archivo JSONL: {e} - Línea: {line}")
-                    continue
-                except Exception as e:
-                    st.error(f"Error inesperado en una línea: {e} - Línea: {line}")
+                    st.error(f"Error al parsear línea: {e} - Línea: {line}")
                     continue
         if not texts:
             st.error("No se pudieron cargar diálogos del archivo JSONL.")
@@ -93,6 +109,8 @@ def main():
 
     embeddings = load_embeddings()
     vectordb = load_faiss(texts, embeddings)
+    feedback_file = "feedback_log.jsonl"
+    vectordb = update_faiss_with_feedback(vectordb, embeddings, feedback_file)
     retriever = vectordb.as_retriever(search_type="similarity", search_kwargs={"k": 5})
 
     generator = load_pipeline()
@@ -106,79 +124,87 @@ def main():
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
 
-    query = st.text_input("Haz una pregunta o comparte cómo te sientes:")
-    if query:
-        with st.spinner("Buscando respuesta..."):
-            # Detectar emoción
-            emocion = detectar_emocion(query)
+    # Modo de revisión
+    if st.checkbox("Modo de revisión"):
+        review_feedback(feedback_file)
+    else:
+        query = st.text_input("Haz una pregunta o comparte cómo te sientes:")
+        if query:
+            with st.spinner("Buscando respuesta..."):
+                emocion = detectar_emocion(query)
+                docs = retriever.get_relevant_documents(query)
+                context = "\n".join([doc.page_content for doc in docs])
+                historial = "\n".join(
+                    [f"Usuario: {entry['query']} | Respuesta: {entry['answer']}" 
+                     for entry in st.session_state.chat_history[-2:]]
+                ) if st.session_state.chat_history else "No hay historial."
 
-            # Obtener documentos relevantes
-            docs = retriever.get_relevant_documents(query)
-            context = "\n".join([doc.page_content for doc in docs])
+                prompt = (
+                    "Eres un chatbot bíblico con un enfoque cristiano protestante. Tu objetivo es ofrecer respuestas empáticas, personalizadas y basadas en la Biblia. "
+                    "Usa un tono cálido, pastoral y alentador. Reconoce la emoción del usuario, incluye una cita bíblica relevante, y ofrece un consejo práctico. "
+                    f"Historial reciente:\n{historial}\n\n"
+                    f"Contexto de diálogos relevantes:\n{context}\n\n"
+                    f"Nombre del usuario: {user_name if user_name else 'No proporcionado'}\n"
+                    f"Contexto adicional: {user_context if user_context else 'No proporcionado'}\n"
+                    f"Emoción detectada: {emocion}\n"
+                    f"Consulta: {query}\n\n"
+                    "### Respuesta ###"
+                )
 
-            # Incluir historial reciente (últimas 2 interacciones)
-            historial = "\n".join(
-                [f"Usuario: {entry['query']} | Respuesta: {entry['answer']}" 
-                 for entry in st.session_state.chat_history[-2:]]
-            ) if st.session_state.chat_history else "No hay historial."
+                result = generator(prompt, max_length=300, do_sample=True, temperature=0.7, top_p=0.9)
+                answer = result[0]["generated_text"].strip()
+                answer = limpiar_respuesta(answer, prompt)
 
-            # Prompt optimizado
-            prompt = (
-                "Eres un chatbot bíblico con un enfoque cristiano protestante. Tu objetivo es ofrecer respuestas empáticas, personalizadas y basadas en la Biblia para ayudar al usuario con sus problemas o emociones. "
-                "Usa un tono cálido, pastoral y alentador. Reconoce la emoción del usuario, incluye una cita bíblica relevante, y ofrece un consejo práctico. "
-                "Si el usuario proporciona su nombre o contexto, incorpóralo de manera natural. Evita incluir nombres irrelevantes o partes del prompt en la respuesta. "
-                "Basándote en el historial y el contexto, asegura que la respuesta sea coherente y relevante.\n\n"
-                "Ejemplo:\n"
-                "Consulta: Me siento muy ansioso por mi trabajo.\n"
-                "Respuesta: Entiendo lo abrumador que puede ser sentirse ansioso por el trabajo. La Biblia nos recuerda en Filipenses 4:6-7: 'Por nada estéis afanosos, sino sean conocidas vuestras peticiones delante de Dios en toda oración y ruego'. Te animo a tomar un momento para orar y entregar tus preocupaciones a Dios. Quizás puedas escribir lo que te preocupa y orar específicamente por ello.\n\n"
-                f"Historial reciente:\n{historial}\n\n"
-                f"Contexto de diálogos relevantes:\n{context}\n\n"
-                f"Nombre del usuario: {user_name if user_name else 'No proporcionado'}\n"
-                f"Contexto adicional: {user_context if user_context else 'No proporcionado'}\n"
-                f"Emoción detectada: {emocion}\n"
-                f"Consulta: {query}\n\n"
-                "### Respuesta ###"
-            )
+                st.session_state.chat_history.append({"query": query, "answer": answer})
 
-            # Generar respuesta
-            result = generator(prompt, max_length=300, do_sample=True, temperature=0.7, top_p=0.9)
-            answer = result[0]["generated_text"].strip()
+            st.markdown("**Respuesta:**")
+            st.write(answer if answer else "No se pudo generar una respuesta.")
 
-            # Limpiar respuesta
-            answer = limpiar_respuesta(answer, prompt)
+            # Retroalimentación
+            st.markdown("**¿Qué te pareció la respuesta?**")
+            rating = st.slider("Califica la respuesta (1 = Mala, 5 = Excelente)", 1, 5, 3, key=f"rating_{len(st.session_state.chat_history)}")
+            feedback = st.text_area("Comentarios sobre la respuesta (opcional)", key=f"feedback_{len(st.session_state.chat_history)}")
 
-            # Guardar en historial
-            st.session_state.chat_history.append({"query": query, "answer": answer})
+            if st.button("Enviar retroalimentación"):
+                feedback_data = {
+                    "query": query,
+                    "answer": answer,
+                    "rating": rating,
+                    "feedback": feedback,
+                    "timestamp": "2025-05-15 00:00:00"
+                }
+                with open(feedback_file, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(feedback_data, ensure_ascii=False) + "\n")
+                st.success("¡Gracias por tu retroalimentación!")
+                
+                if rating <= 2 and feedback:
+                    st.markdown("**Lo sentimos, parece que la respuesta no fue satisfactoria.**")
+                    alternative = st.text_area("¿Cómo te gustaría que fuera la respuesta? (Opcional)", key=f"alternative_{len(st.session_state.chat_history)}")
+                    if st.button("Enviar sugerencia"):
+                        suggestion_data = {
+                            "query": query,
+                            "original_answer": answer,
+                            "rating": rating,
+                            "feedback": feedback,
+                            "suggested_answer": alternative,
+                            "timestamp": "2025-05-15 00:00:00"
+                        }
+                        with open(feedback_file, "a", encoding="utf-8") as f:
+                            f.write(json.dumps(suggestion_data, ensure_ascii=False) + "\n")
+                        st.success("Gracias por tu sugerencia. ¡La usaremos para mejorar!")
 
-        st.markdown("**Respuesta:**")
-        st.write(answer if answer else "No se pudo generar una respuesta.")
+            # Mostrar historial
+            if st.session_state.chat_history:
+                st.markdown("**Historial de conversación:**")
+                for i, entry in enumerate(st.session_state.chat_history[-3:], 1):
+                    st.write(f"{i}. **Tú**: {entry['query']} | **Chatbot**: {entry['answer']}")
 
-        
-        # Componente de retroalimentación
-        st.markdown("**¿Qué te pareció la respuesta?**")
-        rating = st.slider("Califica la respuesta (1 = Mala, 5 = Excelente)", 1, 5, 3,      key=f"rating_{len(st.session_state.chat_history)}")
-        feedback = st.text_area("Comentarios sobre la respuesta (opcional)", key=f"feedback_{len        (st.session_state.chat_history)}")
-
-        # Guardar retroalimentación
-        if st.button("Enviar retroalimentación"):
-        feedback_data = {
-            "query": query,
-            "answer": answer,
-            "rating": rating,
-            "feedback": feedback,
-            "timestamp": st.session_state.get("timestamp", "2025-05-15 00:00:00")
-        }
-        # Guardar en un archivo JSONL para retroalimentación
-        feedback_file = "feedback_log.jsonl"
-        with open(feedback_file, "a", encoding="utf-8") as f:
-            f.write(json.dumps(feedback_data, ensure_ascii=False) + "\n")
-        st.success("¡Gracias por tu retroalimentación!")
-
-        # Mostrar historial
-        if st.session_state.chat_history:
-            st.markdown("**Historial de conversación:**")
-            for i, entry in enumerate(st.session_state.chat_history[-3:], 1):
-                st.write(f"{i}. **Tú**: {entry['query']} | **Chatbot**: {entry['answer']}")
-
+        # Generar dataset para ajuste fino
+        if st.button("Generar dataset para ajuste fino"):
+            finetune_data = prepare_finetune_dataset(feedback_file)
+            if finetune_data:
+                with open("finetune_dataset.json", "w", encoding="utf-8") as f:
+                    json.dump(finetune_data, f, ensure_ascii=False, indent=2)
+                st.success("Dataset para ajuste fino creado.")
 if __name__ == "__main__":
     main()
