@@ -9,3 +9,4 @@ faiss-cpu==1.7.3
 sentence-transformers==2.2.2
 huggingface_hub==0.13.4
 requests
+rich<14
