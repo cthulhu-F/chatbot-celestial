@@ -16,7 +16,7 @@ def load_faiss(texts, _embeddings):
 
 @st.cache_resource(show_spinner=True)
 def load_pipeline():
-    return pipeline("text2text-generation", model="google/mt5-small")
+    return pipeline("text2text-generation", model="mrm8488/t5-base-finetuned-spanish-summarization")
 
 def main():
     st.title("🤖 Chatbot Bíblico (Español) con HuggingFace + FAISS")
