@@ -7,7 +7,7 @@ from langchain.chains import ConversationalRetrievalChain
 import os
 
 # Configura API Key desde secrets
-os.environ["OPENAI_API_KEY"] = st.secrets["fw_3ZbpGN7h9xfqfRCox1E1i8V2"]
+os.environ["OPENAI_API_KEY"] = st.secrets["FIREWORKS_API_KEY"]
 os.environ["OPENAI_API_BASE"] = "https://api.fireworks.ai/inference/v1"
 
 # Cargar documentos PDF desde carpeta docs/
