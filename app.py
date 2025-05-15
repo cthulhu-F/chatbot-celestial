@@ -27,13 +27,15 @@ for filename in os.listdir("docs"):
     if filename.endswith(".jsonl"):
         with open(os.path.join("docs", filename), "r", encoding="utf-8") as f:
             for line in f:
+                line = line.strip()
+                if not line:
+                    continue
                 try:
                     obj = json.loads(line)
-                    content = obj.get("text", "")
-                    if content:
-                        docs.append(Document(page_content=content))
+                    if isinstance(obj, dict) and "text" in obj:
+                        docs.append(Document(page_content=obj["text"]))
                 except json.JSONDecodeError:
-                    continue
+                    st.warning(f"Error al decodificar línea: {line}")
 
 # Crear embeddings y base vectorial con FAISS
 embeddings = SentenceTransformerEmbeddings()
