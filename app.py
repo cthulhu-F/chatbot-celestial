@@ -34,8 +34,8 @@ for filename in os.listdir("docs"):
                     obj = json.loads(line)
                     if isinstance(obj, dict) and "text" in obj:
                         docs.append(Document(page_content=obj["text"]))
-                except json.JSONDecodeError:
-                    st.warning(f"Error al decodificar línea: {line}")
+                except json.JSONDecodeError as e:
+                    print(f"Error JSON en línea: {line}\n{e}")
 
 # Crear embeddings y base vectorial con FAISS
 embeddings = SentenceTransformerEmbeddings()
