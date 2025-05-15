@@ -19,11 +19,11 @@ def load_pipeline():
     return pipeline("text2text-generation", model="google/mt5-small")
 
 def main():
-    st.title("🤖 Chatbot bíblico con HuggingFace y FAISS")
+    st.title("🤖 Chatbot Bíblico (Español) con HuggingFace + FAISS")
 
-    uploaded_file = st.file_uploader("Sube tu archivo JSONL con conversaciones", type=["jsonl"])
+    uploaded_file = st.file_uploader("Sube tu archivo JSONL con versículos/consejos", type=["jsonl"])
     if not uploaded_file:
-        st.info("Sube un archivo para comenzar.")
+        st.info("Sube un archivo JSONL para comenzar.")
         return
 
     texts = []
@@ -32,7 +32,7 @@ def main():
             data = json.loads(line)
             texts.append(data["text"])
         except Exception as e:
-            st.error(f"Error al leer línea: {e}")
+            st.error(f"Error en una línea del archivo: {e}")
             return
 
     embeddings = load_embeddings()
@@ -45,11 +45,19 @@ def main():
         with st.spinner("Buscando respuesta..."):
             docs = retriever.get_relevant_documents(query)
             context = "\n".join([doc.page_content for doc in docs])
-            prompt = f"Contexto:\n{context}\n\nPregunta: {query}\nRespuesta:"
-            result = generator(prompt, max_length=256, do_sample=False)
-            answer = result[0]["generated_text"]
 
-        st.markdown(f"**Respuesta:** {answer}")
+            # Prompt en español, claro para el modelo
+            prompt = (
+                f"Contexto:\n{context}\n\n"
+                f"Pregunta: {query}\n\n"
+                f"Respuesta en español:"
+            )
+
+            result = generator(prompt, max_length=256, do_sample=False)
+            answer = result[0]["generated_text"].strip()
+
+        st.markdown("**Respuesta:**")
+        st.write(answer if answer else "No se pudo generar una respuesta.")
 
 if __name__ == "__main__":
     main()
