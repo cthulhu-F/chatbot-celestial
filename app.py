@@ -6,13 +6,10 @@ from langchain.vectorstores import Chroma
 from langchain.chat_models import ChatOpenAI
 from langchain.chains import ConversationalRetrievalChain
 
-# Importar SentenceTransformer directamente
+from langchain.embeddings.base import Embeddings
 from typing import List
 from sentence_transformers import SentenceTransformer
-import numpy as np
-from langchain.embeddings.base import Embeddings
 
-# Wrapper sencillo para integrar SentenceTransformer con LangChain embeddings API
 class SentenceTransformerEmbeddings(Embeddings):
     def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
         self.model = SentenceTransformer(model_name)
@@ -21,11 +18,11 @@ class SentenceTransformerEmbeddings(Embeddings):
     def embed_query(self, text: str) -> List[float]:
         return self.model.encode([text], convert_to_numpy=True)[0].tolist()
 
-# Configurar Fireworks API Key
+# Configura API keys en st.secrets y variables entorno
 os.environ["OPENAI_API_KEY"] = st.secrets["FIREWORKS_API_KEY"]
 os.environ["OPENAI_API_BASE"] = "https://api.fireworks.ai/inference/v1"
 
-# Cargar documentos JSONL
+# Cargar documentos desde JSONL (usa "text" como campo)
 docs = []
 for filename in os.listdir("docs"):
     if filename.endswith(".jsonl"):
@@ -33,32 +30,26 @@ for filename in os.listdir("docs"):
             for line in f:
                 try:
                     obj = json.loads(line)
-                    content = obj.get("content", "")
+                    content = obj.get("text", "")
                     if content:
                         docs.append(Document(page_content=content))
                 except json.JSONDecodeError:
                     continue
 
-# Crear embeddings personalizados
-embeddings = SentenceTransformerEmbeddings()
-
-# Extraer textos para crear vectores
 texts = [doc.page_content for doc in docs]
 
-# Vector store Chroma necesita el embedding de query y documents separados,
-# pero aquí usamos la interfaz simple de from_texts (que internamente llama a embed_documents)
+# Crear embeddings e índice vectorial Chroma
+embeddings = SentenceTransformerEmbeddings()
 vectordb = Chroma.from_texts(texts, embeddings, persist_directory="db")
 vectordb.persist()
 
-# Crear modelo LLM Fireworks
+# Crear modelo LLM y cadena de consulta
 llm = ChatOpenAI(model="accounts/fireworks/models/mixtral-8x7b-instruct")
-
-# Cadena QA
 qa_chain = ConversationalRetrievalChain.from_llm(llm, vectordb.as_retriever())
 
 # Interfaz Streamlit
-st.set_page_config(page_title="Chatbot con JSONL", page_icon="🤖")
-st.title("🤖 Chatbot con tus archivos .jsonl")
+st.set_page_config(page_title="Chatbot JSONL", page_icon="🤖")
+st.title("Chatbot con tus archivos .jsonl")
 
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
