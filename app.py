@@ -50,6 +50,9 @@ def main():
             prompt = f"Contexto:\n{context}\n\nPregunta: {query}\nRespuesta:"
 
             response = inference_api(inputs=prompt, raw_response=True)
+
+            st.write("Respuesta cruda:", response.text)
+            
             response_json = response.json()
 
             # Mostrar la respuesta completa para debug
