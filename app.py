@@ -2,7 +2,6 @@ import streamlit as st
 import json
 from langchain.embeddings import HuggingFaceEmbeddings
 from langchain.vectorstores import FAISS
-from langchain.chains import RetrievalQA
 from langchain.docstore.document import Document
 from huggingface_hub import InferenceApi
 
@@ -22,7 +21,7 @@ def load_faiss(texts, _embeddings):
 
 @st.cache_resource(show_spinner=True)
 def load_inference_api():
-    return InferenceApi(repo_id="google/flan-t5-small", token=HUGGINGFACEHUB_API_TOKEN)
+    return InferenceApi(repo_id="bigscience/bloomz-560m", token=HUGGINGFACEHUB_API_TOKEN)
 
 def main():
     st.title("Chatbot con HuggingFace + FAISS")
@@ -49,14 +48,31 @@ def main():
             docs = retriever.get_relevant_documents(query)
             context = "\n".join([doc.page_content for doc in docs])
             prompt = f"Contexto:\n{context}\n\nPregunta: {query}\nRespuesta:"
-            
-            # Llamada directa al modelo, raw_response True para parsear JSON
+
             response = inference_api(inputs=prompt, raw_response=True)
             response_json = response.json()
-            
-            # Dependiendo del modelo la respuesta puede estar en diferentes keys:
-            # Normalmente en 'generated_text' o similar
-            answer = response_json.get('generated_text', 'No se obtuvo respuesta')
+
+            # Mostrar la respuesta completa para debug
+            st.write("Respuesta raw API:", response_json)
+
+            # Intentamos extraer la respuesta con varios métodos:
+            answer = None
+
+            # 1. Intenta clave 'generated_text'
+            if isinstance(response_json, dict):
+                answer = response_json.get('generated_text', None)
+
+            # 2. Si es lista, toma el primer elemento con 'generated_text'
+            if not answer and isinstance(response_json, list) and len(response_json) > 0:
+                first_item = response_json[0]
+                if isinstance(first_item, dict):
+                    answer = first_item.get('generated_text', None)
+                else:
+                    answer = str(first_item)
+
+            # 3. Si no tenemos respuesta, conviértelo a string por si es texto plano
+            if not answer:
+                answer = str(response_json) or "No se obtuvo respuesta"
 
         st.markdown(f"**Respuesta:** {answer}")
 
