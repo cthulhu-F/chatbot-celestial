@@ -36,7 +36,7 @@ def main():
     #        st.error(f"Error en una línea del archivo: {e}")
     #        return
 
-    jsonl_file_path = "conversaciones_autoayuda_cristiana_naturales.jsonl"
+    jsonl_file_path = "/docs/conversaciones_autoayuda_cristiana_naturales.jsonl"
 
     # Verificar si el archivo existe
     if not os.path.exists(jsonl_file_path):
