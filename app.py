@@ -4,7 +4,7 @@ import json
 
 from langchain.schema import Document 
 from langchain.vectorstores import Chroma
-from langchain.embeddings import OpenAIEmbeddings
+from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain.chat_models import ChatOpenAI
 from langchain.chains import ConversationalRetrievalChain
 
@@ -27,7 +27,7 @@ for filename in os.listdir("docs"):
                     continue
 
 # --- Crear vector store ---
-embeddings = OpenAIEmbeddings()
+embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 vectordb = Chroma.from_documents(docs, embeddings, persist_directory="db")
 vectordb.persist()
 

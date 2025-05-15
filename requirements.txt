@@ -5,3 +5,4 @@ openai
 chromadb
 unstructured
 tiktoken
+sentence-transformers
