@@ -153,6 +153,27 @@ def main():
         st.markdown("**Respuesta:**")
         st.write(answer if answer else "No se pudo generar una respuesta.")
 
+        
+        # Componente de retroalimentación
+        st.markdown("**¿Qué te pareció la respuesta?**")
+        rating = st.slider("Califica la respuesta (1 = Mala, 5 = Excelente)", 1, 5, 3,      key=f"rating_{len(st.session_state.chat_history)}")
+        feedback = st.text_area("Comentarios sobre la respuesta (opcional)", key=f"feedback_{len        (st.session_state.chat_history)}")
+
+        # Guardar retroalimentación
+        if st.button("Enviar retroalimentación"):
+        feedback_data = {
+            "query": query,
+            "answer": answer,
+            "rating": rating,
+            "feedback": feedback,
+            "timestamp": st.session_state.get("timestamp", "2025-05-15 00:00:00")
+        }
+        # Guardar en un archivo JSONL para retroalimentación
+        feedback_file = "feedback_log.jsonl"
+        with open(feedback_file, "a", encoding="utf-8") as f:
+            f.write(json.dumps(feedback_data, ensure_ascii=False) + "\n")
+        st.success("¡Gracias por tu retroalimentación!")
+
         # Mostrar historial
         if st.session_state.chat_history:
             st.markdown("**Historial de conversación:**")
