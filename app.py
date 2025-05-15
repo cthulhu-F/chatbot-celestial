@@ -21,19 +21,51 @@ def load_pipeline():
 def main():
     st.title("🤖 Chatbot Bíblico (Español) con HuggingFace + FAISS")
 
-    uploaded_file = st.file_uploader("Sube tu archivo JSONL con versículos/consejos", type=["jsonl"])
-    if not uploaded_file:
-        st.info("Sube un archivo JSONL para comenzar.")
+    
+    #uploaded_file = st.file_uploader("Sube tu archivo JSONL con versículos/consejos", type=["jsonl"])
+    #if not uploaded_file:
+    #    st.info("Sube un archivo JSONL para comenzar.")
+    #    return
+    #texts = []
+    #for line in uploaded_file:
+    #    try:
+    #        data = json.loads(line)
+    #        texts.append(data["text"])
+    #    except Exception as e:
+    #        st.error(f"Error en una línea del archivo: {e}")
+    #        return
+
+    jsonl_file_path = "conversaciones_autoayuda_cristiana_naturales.jsonl"
+
+    # Verificar si el archivo existe
+    if not os.path.exists(jsonl_file_path):
+        st.error(f"No se encontró el archivo JSONL en la ruta: {jsonl_file_path}")
         return
 
+    # Leer el archivo JSONL
     texts = []
-    for line in uploaded_file:
-        try:
-            data = json.loads(line)
-            texts.append(data["text"])
-        except Exception as e:
-            st.error(f"Error en una línea del archivo: {e}")
+    try:
+        with open(jsonl_file_path, "r", encoding="utf-8") as file:
+            for line in file:
+                try:
+                    data = json.loads(line.strip())
+                    if "text" in data:
+                        texts.append(data["text"])
+                    else:
+                        st.warning(f"Línea omitida, no contiene campo 'text': {line}")
+                except json.JSONDecodeError as e:
+                    st.error(f"Error al parsear una línea del archivo JSONL: {e} - Línea: {line}")
+                    continue  # Continuar con la siguiente línea
+                except Exception as e:
+                    st.error(f"Error inesperado en una línea: {e} - Línea: {line}")
+                    continue
+        if not texts:
+            st.error("No se pudieron cargar diálogos del archivo JSONL.")
             return
+        st.success(f"Archivo JSONL cargado correctamente. Se cargaron {len(texts)} diálogos.")
+    except Exception as e:
+        st.error(f"Error al leer el archivo JSONL: {e}")
+        return
 
     embeddings = load_embeddings()
     vectordb = load_faiss(texts, embeddings)
