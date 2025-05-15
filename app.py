@@ -18,11 +18,9 @@ def load_embeddings():
     return HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
 @st.cache_resource(show_spinner=True)
-def load_faiss(texts, embeddings):
-    # Convierte textos en Documentos
+def load_faiss(texts, _embeddings):
     docs = [Document(page_content=t) for t in texts]
-    # Crea índice FAISS
-    return FAISS.from_documents(docs, embeddings)
+    return FAISS.from_documents(docs, _embeddings)
 
 @st.cache_resource(show_spinner=True)
 def load_llm():
