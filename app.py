@@ -2,7 +2,8 @@ import streamlit as st
 import os
 import json
 
-from langchain.schema import Document from langchain.vectorstores import Chroma
+from langchain.schema import Document 
+from langchain.vectorstores import Chroma
 from langchain.embeddings import OpenAIEmbeddings
 from langchain.chat_models import ChatOpenAI
 from langchain.chains import ConversationalRetrievalChain
