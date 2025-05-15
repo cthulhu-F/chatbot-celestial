@@ -5,3 +5,4 @@ faiss-cpu
 sentence-transformers==2.2.2
 torch
 transformers
+openai
